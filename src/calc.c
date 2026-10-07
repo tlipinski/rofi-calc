@@ -38,6 +38,12 @@
 
 #include <stdint.h>
 
+// Patched: from rofi's internal widgets/textbox.h (TextBoxFontType), not
+// exported in the installed headers
+#ifndef MARKUP
+#define MARKUP 8
+#endif
+
 G_MODULE_EXPORT Mode mode;
 
 typedef struct {
@@ -603,8 +609,15 @@ static ModeMode calc_mode_result(Mode *sw, int menu_entry,
             if (input != NULL) {
                 *input = g_strdup(pd->last_result);
             }
+            retv = RELOAD_DIALOG;
+        } else if (!is_error_string(pd->last_result) &&
+                   strlen(pd->last_result) > 0) {
+            // Patched: Enter on the result row also runs -calc-command
+            execsh(sw, pd->cmd, pd->last_result);
+            retv = MODE_EXIT;
+        } else {
+            retv = RELOAD_DIALOG;
         }
-        retv = RELOAD_DIALOG;
     } else if ((menu_entry & MENU_OK) &&
                (selected_line > 0 || pd->config.no_history)) {
         char *entry;
@@ -670,7 +683,7 @@ static void calc_mode_destroy(Mode *sw) {
 }
 
 static char *calc_get_display_value(const Mode *sw, unsigned int selected_line,
-                                    G_GNUC_UNUSED int *state,
+                                    int *state,
                                     G_GNUC_UNUSED GList **attr_list,
                                     int get_entry) {
     CALCModePrivateData *pd = (CALCModePrivateData *)mode_get_private_data(sw);
@@ -680,10 +693,16 @@ static char *calc_get_display_value(const Mode *sw, unsigned int selected_line,
     }
 
     if (selected_line == 0) {
-        if (!pd->config.no_history)
-            return g_strdup("Add to history");
-        else
+        // Patched: show the live result (or error) instead of "Add to history"
+        if (pd->config.no_history)
             return g_strdup("");
+        if (is_error_string(pd->last_result)) {
+            *state |= MARKUP;
+            return g_markup_printf_escaped("<span foreground='%s'>%s</span>",
+                                           pd->calc_error_color,
+                                           pd->last_result);
+        }
+        return g_strdup(pd->last_result);
     }
     unsigned int real_index =
         get_real_history_index(pd->history, selected_line);
@@ -792,6 +811,10 @@ static char *calc_preprocess_input(Mode *sw, const char *input) {
 
 static char *calc_get_message(const Mode *sw) {
     CALCModePrivateData *pd = (CALCModePrivateData *)mode_get_private_data(sw);
+    // Patched: row 0 already shows the result/error, so hide the message bar
+    if (!pd->config.no_history) {
+        return NULL;
+    }
     if (is_error_string(pd->last_result)) {
         return g_markup_printf_escaped("<span foreground='%s'>%s</span>",
                                        pd->calc_error_color, pd->last_result);
