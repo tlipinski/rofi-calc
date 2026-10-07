@@ -609,15 +609,8 @@ static ModeMode calc_mode_result(Mode *sw, int menu_entry,
             if (input != NULL) {
                 *input = g_strdup(pd->last_result);
             }
-            retv = RELOAD_DIALOG;
-        } else if (!is_error_string(pd->last_result) &&
-                   strlen(pd->last_result) > 0) {
-            // Patched: Enter on the result row also runs -calc-command
-            execsh(sw, pd->cmd, pd->last_result);
-            retv = MODE_EXIT;
-        } else {
-            retv = RELOAD_DIALOG;
         }
+        retv = RELOAD_DIALOG;
     } else if ((menu_entry & MENU_OK) &&
                (selected_line > 0 || pd->config.no_history)) {
         char *entry;
@@ -632,13 +625,9 @@ static ModeMode calc_mode_result(Mode *sw, int menu_entry,
         retv = MODE_EXIT;
     } else if (menu_entry & MENU_CUSTOM_INPUT) {
         if (!is_error_string(pd->last_result) && strlen(pd->last_result) > 0) {
-            if (!pd->config.no_history &&
-                find_arg("-" CALC_COMMAND_USES_HISTORY) != -1) {
-                char *history_entry = g_strdup_printf("%s", pd->last_result);
-                g_ptr_array_add(pd->history, (gpointer)history_entry);
-                if (!pd->config.no_persist_history) {
-                    append_str_to_history(history_entry);
-                }
+            // Patched: always add to history before running -calc-command
+            if (!pd->config.no_history) {
+                append_last_result_to_history(pd);
             }
 
             execsh(sw, pd->cmd, pd->last_result);
